@@ -1,0 +1,6 @@
+debugar pra ver por que o algoritmo não está ordenando certo o caso de teste test_010.040_1.txt
+    hipóteses:
+        - função a_menor_que_b (fraca)
+        - promoção / demoção da nova linha inserida no heap
+
+debugar pra ver se os blocos estão sendo gerados de maneira correta no caso de teste test_010.080_1.txt
