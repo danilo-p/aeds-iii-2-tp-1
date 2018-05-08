@@ -46,6 +46,117 @@ int a_menor_que_b(char* a, char* b, int len) {
     return 0;
 }
 
+int is_equal_type(int a, int b) {
+    return (
+        (a < 0 && b < 0) ||
+        (a > 0 && b > 0)
+    );
+}
+
+void demote_heap_node(
+    int *heap,
+    int heap_size,
+    int node_index,
+    char **buffer,
+    int line_size,
+    int curr_type
+) {
+    int temp;
+    int son_index = 2 * node_index + 1; // node's left son
+    while (
+        // son is not a leaf
+        son_index < heap_size
+    ) {
+        // node has two sons
+        if (son_index < heap_size - 1) {
+            if (
+                (
+                    // "son" and the other "son" aren't of the same block
+                    is_equal_type(heap[son_index], heap[son_index + 1]) &&
+                    // The other "son" is lower than this one
+                    a_menor_que_b(
+                        buffer[abs(heap[son_index + 1])],
+                        buffer[abs(heap[son_index])],
+                        line_size
+                    )
+                ) ||
+                (
+                    // "son" and the other "son" aren't of the same block
+                    !is_equal_type(heap[son_index], heap[son_index + 1]) &&
+                    // the other son is from current type
+                    is_equal_type(curr_type, heap[son_index + 1])
+                )
+            ) {
+                // Pick the right son
+                son_index = son_index + 1;
+            }
+        }
+
+        if (
+            // node and son are of the same block
+            (
+                is_equal_type(heap[node_index], heap[son_index])
+            ) &&
+            // The node is lower than the son
+            a_menor_que_b(
+                buffer[abs(heap[node_index])],
+                buffer[abs(heap[son_index])],
+                line_size
+            )
+        ) {
+            // node is on the right place
+            break;
+        }
+
+        // Swap node and son
+        temp = heap[node_index];
+        heap[node_index] = heap[son_index];
+        heap[son_index] = temp;
+
+        // Jump to the next heap level
+        node_index = son_index; // node becomes son
+        son_index = 2 * node_index + 1;
+    }
+}
+
+void promote_heap_node(
+    int *heap,
+    int heap_size,
+    int node_index,
+    char **buffer,
+    int line_size,
+    int curr_type
+) {
+    int temp;
+    int father_index = (node_index - 1) / 2;
+    while (
+        // node is not the heap root
+        node_index > 0 && (
+            (
+                // father and node are from different types
+                !is_equal_type(heap[node_index], heap[father_index]) &&
+                // node is from current type
+                is_equal_type(curr_type, heap[node_index])
+            ) ||
+            // node is lower than father
+            a_menor_que_b(
+                buffer[abs(heap[node_index])],
+                buffer[abs(heap[father_index])],
+                line_size
+            )
+        )
+    ) {
+        // Swap node and father
+        temp = heap[node_index];
+        heap[node_index] = heap[father_index];
+        heap[father_index] = temp;
+
+        // Jump to the previous heap level
+        node_index = father_index; // node becomes father
+        father_index = (node_index - 1) / 2;
+    }
+}
+
 // Parâmetros:
 //     - input_file: o nome do arquivo com os registros de entrada;
 //     - output_file: o nome do arquivo com os registros de entrada ordenados;
@@ -56,227 +167,340 @@ int a_menor_que_b(char* a, char* b, int len) {
 void external_sort(const char* input_file, const char* output_file, unsigned int memory) {
     int i;
 
-    FILE* ptr_input_file = fopen(input_file, "r");
-    FILE* ptr_output_file = fopen(output_file, "w+");
+    unsigned int line_size = 0; // Tamanho das linhas do arquivo de entrada
+    unsigned int memory_max_lines = 0; // Máximo de linhas na memória dada
 
-    unsigned int line_size;
+    char **buffer = NULL; // Guarda as linhas trazidas da memória secundária
+    int *heap = NULL; // Heap que guardará os indices das strings no buffer
+    int heap_size = 0; // Tamanho atual do heap
+    char *aux_line = NULL; // String auxiliar utilizada ao longo do programa
+
+
+    // ============= Inicialização do algoritmo =============
+
+    // Abertura dos arquivos de I/O
+
+    FILE *ptr_input_file = fopen(input_file, "r");
+    FILE *ptr_output_file = fopen(output_file, "w+");
+
+    // Definição dos tamanhos
+
     fscanf(ptr_input_file, "%u%*c", &line_size);
-    printf("line_size: %u\n", line_size);
+    memory_max_lines = (memory * 1024) / ((line_size + 1) * sizeof(char));
+    printf("memory_max_lines %d\n", memory_max_lines);;
 
-    unsigned int line_size_bytes = sizeof(char) * (line_size + 1);
+    // Criação estruturas
 
-    // buffer and heap lines amount
-    unsigned int m = (
-        // Size in bytes
-        (memory * 1000) /
-        // Size of a line in bytes
+    buffer = (char **) malloc(memory_max_lines * sizeof(char *));
+    for (i = 0; i < memory_max_lines; i++) {
+        buffer[i] = (char *) mathias_malloc((line_size + 1) * sizeof(char));
+    }
+    buffer = &buffer[-1]; // Transforma o vetor para "1-indexed"
+    heap = (int *) calloc(memory_max_lines, sizeof(int));
+    aux_line = (char *) malloc((line_size + 1) * sizeof(char));
+
+
+
+    // =========== Divisão do arquivo de entrada em blocos ordenados ===========
+
+
+    // Construção inicial do heap
+
+    int curr_type = 1; // Tipo do bloco que está sendo construído. (1 | -1)
+    for (
+        i = 1;
         (
-            (line_size_bytes) +
-            sizeof(char *) +
-            sizeof(int *)
-        )
-    ) - 1; // discounting the buffer aux at 0
-    printf("m: %u\n", m);
-
-    // -------- Breaking input file into blocks --------
-
-    int *heap = (int *) mathias_malloc(sizeof(int *) * m);
-
-    // 0 position of the buffer is used as aux
-    char **buffer = (char **) mathias_malloc(sizeof(char *) * (m + 1));
-    for (i = 0; i < m + 1; i++) {
-        buffer[i] = (char *) mathias_malloc(line_size_bytes);
-    }
-
-    int curr_line = 0;
-
-    // Filling heap with the first lines
-    int a_index = 0, b_index = 0, temp = 0;
-    while (
-        curr_line < m &&
-        // Read the current line on the input file and put it on the last
-        // position of the heap
-        fscanf(ptr_input_file, "%[^\n]%*c", buffer[0]) != EOF
+            // Há espaço na memória
+            i <= memory_max_lines &&
+            // O arquivo de entrada não está vazio
+            fscanf(ptr_input_file, "%[^\n]%*c", aux_line) != EOF
+        );
+        i++
     ) {
-        strcpy(buffer[curr_line + 1], buffer[0]);
-        heap[curr_line] = curr_line + 1;
+        // Adiciona a linha lida no buffer
+        strcpy(buffer[i], aux_line);
 
-        // Promote the current line to it's place on the heap
-        a_index = curr_line; // "son"
-        b_index = (a_index - 1) / 2; // "father"
-        while (
-            // "son" is not the heap root
-            a_index > 0 &&
-            // "son" is lower than "father"
-            a_menor_que_b(
-                buffer[heap[a_index]],
-                buffer[heap[b_index]],
-                line_size
-            )
-        ) {
-            // Swap "son" and "father"
-            temp = heap[a_index];
-            heap[a_index] = heap[b_index];
-            heap[b_index] = temp;
+        // Adiciona o índice da linha no buffer no final do heap
+        heap[heap_size] = i;
+        heap_size++;
 
-            // Jump to the previous heap level
-            a_index = b_index; // "son" becomes "father"
-            b_index = (b_index - 1) / 2; // "father" becomes it's "father"
+        // Promove a linha lida no heap
+        promote_heap_node(heap, heap_size, heap_size - 1,
+            buffer, line_size, curr_type); // Marca o índice com o tipo 1
+    }
+
+
+    // Divisão em blocos ordenados escritos no arquivo de saída
+
+    fprintf(ptr_output_file, "%d\n", line_size);
+    int block_count = 1; // Quantidade de blocos no arquivo de saída
+    int index = 0; // Guarda o índices de linhas no buffer
+    while (heap_size > 0) { // Enquanto o heap não estiver vazio
+        // Recupera linha que está no topo do heap
+        index = heap[0];
+
+        // Passa para o próximo bloco caso o tipo da linha seja diferente
+        if (!is_equal_type(index, curr_type)) {
+            curr_type = curr_type * (-1);
+            fprintf(ptr_output_file, "\n"); // Separa os blocos
+            block_count++;
         }
 
-        curr_line++; // jump to the next line on the input file
-    }
+        // Coloca a linha do topo no arquivo de saída
+        index = abs(index);
+        fprintf(ptr_output_file, "%s\n", buffer[index]);
+        strcpy(aux_line, buffer[index]);
 
-    int heap_size = curr_line;
-
-    printf("heap: %d\n", heap_size);
-    for(i = 0; i < heap_size; i++) {
-        printf("%d - %s\n", heap[i], buffer[heap[i]]);
-    }
-
-    // Creating initial blocks
-    int removed_index = 0;
-    int curr_block_type = 1; // (1 | -1)
-    while (heap_size > 0) {
-        // Remove the root of the heap
-        removed_index = heap[0];
-
-        // If a element of another block is being removed, switch to this block
+        // Lê a próxima linha do arquivo de entrada se não estiver vazio
         if (
-            (removed_index < 0 && curr_block_type > 0) ||
-            (removed_index > 0 && curr_block_type < 0)
+            fscanf(ptr_input_file, "%[^\n]%*c", buffer[index]) != EOF &&
+            !feof(ptr_input_file)
         ) {
-            curr_block_type = curr_block_type * (-1);
-            printf("\nChanging blocks! %d\n\n", curr_block_type);
-            fprintf(ptr_output_file, "%s\n", "\n");
+            // Coloca a linha lida no topo do heap
+            if (a_menor_que_b(
+                buffer[index],
+                aux_line,
+                line_size
+            )) {
+                // Marca com o outro tipo para colocar a linha em outro bloco
+                heap[0] = index * curr_type * (-1);
+            } else {
+                // Marca a linha com o tipo desse bloco
+                heap[0] = index * curr_type;
+            }
+        }
+        // Se não houver mais linhas
+        else {
+            // Coloca uma folha do heap no topo
+            heap[0] = heap[heap_size - 1];
+            heap[heap_size - 1] = 0;
+            heap_size--;
         }
 
-        // Promote the right most leaf
-        heap[0] = heap[heap_size - 1];
-        printf("\nRemoving %d %s and promoting %d %s\n", removed_index, buffer[abs(removed_index)], heap[heap_size - 1], buffer[abs(heap[heap_size - 1])]);
-        heap_size--;
+        // Rebaixa o topo do heap
+        demote_heap_node(heap, heap_size, 0, buffer, line_size, curr_type);
+    }
 
-        // Demote until it is on the right place
-        a_index = 0; // "father"
-        b_index = 1; // "son"
+
+    // ============= Intercalação dos blocos do arquivo de saída =============
+
+    char *aux_file_name = NULL; // Guarda nomes dos arquivos auxiliares
+    aux_file_name = (char *) malloc(20 * sizeof(char));
+
+    unsigned int aux_files_count;
+    FILE *ptr_aux_file;
+    int aux_file_max_block_count;
+    int aux_file_curr_block_count;
+    FILE **aux_files;
+    int *aux_files_empty;
+    int aux_files_empty_count;
+    int *aux_files_locked;
+
+    // Enquanto estiver mais de 1 bloco no arquivo de saída
+    while (block_count > 1) {
+        aux_files_count = 1; // Quantidade de arquivos auxiliares
+        ptr_aux_file = NULL; // Ponteiro do arquivo auxiliar atual
+
+
+        // Divisão dos blocos do arquivo de saída em arquivos auxiliares
+
+        // Quantidade máxima de blocos nos arquivos auxiliares.
+        aux_file_max_block_count = (block_count / memory_max_lines) + 1;
+        // Quantidade atual de blocos no ptr_aux_file. Começa com 1.
+        aux_file_curr_block_count = 1;
+
+        // Volta para o início do arquivo de saída
+        rewind(ptr_output_file);
+        // Pula a primeira linha
+        fgets(aux_line, line_size + 1, ptr_output_file);
+
+        // Abre o primeiro arquivo auxiliar
+        sprintf(aux_file_name, "aux_file_%d.txt", aux_files_count);
+        ptr_aux_file = fopen(aux_file_name, "w");
+
+        // Lê linhas do arquivo de saída enquanto não chegar ao fim
         while (
-            // "father" is not a leaf
-            b_index < heap_size
+            fgets(aux_line, line_size + 1, ptr_output_file) != NULL &&
+            !feof(ptr_output_file)
         ) {
-            // The "father" has two "sons"
-            if (b_index < heap_size - 1) {
+            // Caso seja uma divisão entre blocos
+            if (strcmp(aux_line, "\n") == 0) {
+                // Caso o arquivo auxiliar esteja com a quantidade de blocos
+                // máxima
+                if (aux_file_curr_block_count == aux_file_max_block_count) {
+                    // Abre outro arquivo auxiliar
+                    fclose(ptr_aux_file);
+                    aux_files_count++;
+                    sprintf(aux_file_name, "aux_file_%d.txt", aux_files_count);
+                    ptr_aux_file = fopen(aux_file_name, "w");
+                    // Reinicia a contagem de blocos
+                    aux_file_curr_block_count = 1;
+                }
+                // Caso ainda caiba mais blocos no arquivo auxiliar
+                else {
+                    fprintf(ptr_aux_file, "\n"); // Separa os blocos
+                    aux_file_curr_block_count++; // Conta mais 1 bloco
+                }
+            }
+            // Caso seja uma linha normal
+            else {
+                // Pula a quebra de linha
+                fscanf(ptr_output_file, "%*c");
+                // Adiciona a linha no arquivo de saída
+                fprintf(ptr_aux_file, "%s\n", aux_line);
+            }
+        }
+        fclose(ptr_aux_file); // Fecha o último arquivo auxiliar aberto
+
+
+        // Intercalação dos blocos dos arquivos auxiliares no arquivo de saída
+
+        // Limpa o arquivo de saída
+        fclose(ptr_output_file);
+        ptr_output_file = fopen(output_file, "w+");
+        fprintf(ptr_output_file, "%d", line_size);
+        block_count = 0;
+
+        // Ponteiros para os arquivos auxiliares
+        aux_files = (FILE **) malloc(sizeof(FILE *) * aux_files_count);
+        aux_files = &aux_files[-1]; // Transforma o vetor para "1-indexed"
+
+        // Vetor que trava os arquivos cujos blocos que eram lidos terminaram
+        aux_files_locked = (int *) malloc(sizeof(int) * aux_files_count);
+        aux_files_locked = &aux_files_locked[-1]; // Transforma para "1-indexed"
+
+        // Vetor que marca os arquivos já vazios
+        aux_files_empty = (int *) malloc(sizeof(int) * aux_files_count);
+        aux_files_empty = &aux_files_empty[-1]; // Transforma para "1-indexed"
+        aux_files_empty_count = 0; // Quantidade de arquivos já totalmente lidos
+
+        for (i = 1; i <= aux_files_count; i++) {
+            aux_files[i] = NULL;
+            aux_files_locked[i] = 0;
+            aux_files_empty[i] = 0;
+        }
+
+        // Enquanto houver arquivos auxiliares com linhas para serem lidas
+        while(aux_files_empty_count < aux_files_count) {
+            // Construção inicial do heap
+            heap_size = 0; // Limpa o heap
+            for (i = 1; i <= aux_files_count; i++) {
+                // Destrava o arquivo para iniciar a leitura de um novo bloco
+                aux_files_locked[i] = 0;
+
+                // Caso o arquivo auxiliar não estiver aberto
+                if (aux_files[i] == NULL) {
+                    // Abre o arquivo auxiliar e coloca no vetor
+                    sprintf(aux_file_name, "aux_file_%d.txt", i);
+                    aux_files[i] = fopen(aux_file_name, "r");
+                }
+
+                // Caso haja linhas no arquivo auxiliar
                 if (
-                    // "son" and the other "son" aren't of the same block
-                    (
-                        (heap[b_index + 1] > 0 && heap[b_index] < 0) ||
-                        (heap[b_index + 1] < 0 && heap[b_index] > 0)
-                    ) ||
-                    // The other "son" is lower than this one
-                    a_menor_que_b(
-                        buffer[abs(heap[b_index + 1])],
-                        buffer[abs(heap[b_index])],
-                        line_size
-                    )
+                    !aux_files_empty[i] &&
+                    fscanf(aux_files[i], "%[^\n]%*c", aux_line) != EOF &&
+                    !feof(aux_files[i])
                 ) {
-                    printf("R is lower than L %d %d\n", heap[b_index + 1], heap[b_index]);
-                    b_index++;
+                    // Adiciona a linha no buffer
+                    strcpy(buffer[i], aux_line);
+
+                    // Adiciona o índice da linha no buffer no final do heap
+                    heap[heap_size] = i;
+                    heap_size++;
+
+                    // Promove a linha lida no heap
+                    promote_heap_node(heap, heap_size, heap_size - 1,
+                        buffer, line_size, 1);
+                }
+                // Caso não haja linhas no arquivo auxiliar
+                else {
+                    // Trava o arquivo
+                    aux_files_locked[i] = 1;
+                    // Marca o arquivo como vazio
+                    aux_files_empty[i] = 1;
+                    aux_files_empty_count++;
                 }
             }
 
-            if (
-                // "father" and "son" are of the same block
-                (
-                    (heap[a_index] > 0 && heap[b_index] > 0) ||
-                    (heap[a_index] < 0 && heap[b_index] < 0)
-                ) &&
-                // The "father" is lower than the "son"
-                a_menor_que_b(
-                    buffer[abs(heap[a_index])],
-                    buffer[abs(heap[b_index])],
-                    line_size
-                )
-            ) {
-                printf("%s is on the right place! %d %d\n", buffer[abs(heap[a_index])], heap[a_index], heap[b_index]);
-                break;
+            // Caso haja mais blocos
+            if (heap_size > 0) {
+                fprintf(ptr_output_file, "\n"); // Divide os blocos
+                block_count++;
             }
 
-            // Swap "father" and "son"
-            temp = heap[a_index];
-            heap[a_index] = heap[b_index];
-            heap[b_index] = temp;
+            // Enquanto o heap não estiver vazio
+            while (heap_size > 0) {
+                // Recupera linha que está no topo do heap
+                index = heap[0];
 
-            // Jump to the next heap level
-            a_index = b_index; // "father" becomes "son"
-            b_index = 2 * a_index + 1; // "son" becomes it's "son"
-        }
+                // Coloca a linha do topo no arquivo de saída
+                fprintf(ptr_output_file, "%s\n", buffer[index]);
 
-        // Put the removed line on a block
-        fprintf(ptr_output_file, "%s\n", buffer[abs(removed_index)]);
+                // Se o arquivo não está vazio ou travado, lê uma nova linha
+                // e a coloca como o novo topo
+                if (
+                    // O arquivo auxiliar não está travado
+                    !aux_files_locked[index] &&
+                    // O arquivo auxiliar não está no final
+                    fgets(aux_line, line_size + 1, aux_files[index]) != NULL &&
+                    !feof(aux_files[index])
+                ) {
+                    // Caso a linha lida seja uma separação de blocos
+                    if (strcmp(aux_line, "\n") == 0) {
+                        // Trava o arquivo
+                        aux_files_locked[index] = 1;
+                        // Coloca uma folha do heap no topo
+                        heap[0] = heap[heap_size - 1];
+                        heap[heap_size - 1] = 0;
+                        heap_size--;
+                    }
+                    // Caso seja uma linha normal
+                    else {
+                        // Pula a quebra de linha
+                        fscanf(aux_files[index], "%*c");
+                        // Adiciona a linha no topo do heap
+                        strcpy(buffer[index], aux_line);
+                    }
+                }
+                // Se o arquivo está travado ou vazio, coloca uma folha do heap
+                // no topo
+                else {
+                    // Coloca uma folha do heap no topo
+                    heap[0] = heap[heap_size - 1];
+                    heap[heap_size - 1] = 0;
+                    heap_size--;
+                }
 
-        strcpy(buffer[0], buffer[abs(removed_index)]);
-
-        if (fscanf(ptr_input_file, "%[^\n]%*c", buffer[abs(removed_index)]) == EOF) {
-            continue;
-        } else {
-            printf("New line added and ");
-        }
-
-        // Put the new line on the heap
-        heap[heap_size] = heap_size;
-
-        if (a_menor_que_b(
-            buffer[abs(removed_index)],
-            buffer[0],
-            line_size
-        )) {
-            // Mark the new line to be on the next block and leave it as the
-            // greater line
-            heap[heap_size] = -heap_size;
-            printf("its not on the same block! :)\n");
-        } else {
-            printf("its on the same block! :(\n");
-            // Promote the new line to it's place on the heap
-            a_index = heap_size; // "son"
-            b_index = (heap_size - 1) / 2; // "father"
-            while (
-                // "son" is not the heap root
-                a_index > 0 &&
-                // "son" and "father" are of the same block
-                (
-                    (heap[a_index] < 0 && heap[b_index] < 0) ||
-                    (heap[a_index] > 0 && heap[b_index] > 0)
-                ) &&
-                // "son" is lower than "father"
-                a_menor_que_b(
-                    buffer[abs(heap[a_index])],
-                    buffer[abs(heap[b_index])],
-                    line_size
-                )
-            ) {
-                // Swap "son" and "father"
-                temp = heap[a_index];
-                heap[a_index] = heap[b_index];
-                heap[b_index] = temp;
-
-                // Jump to the previous heap level
-                a_index = b_index; // "son" becomes "father"
-                b_index = (b_index - 1) / 2; // "father" becomes it's "father"
+                // Rebaixa o topo do heap até seu lugar
+                demote_heap_node(heap, heap_size, 0, buffer, line_size, 1);
             }
         }
 
-        heap_size++;
+        // Transforma de volta para "0-indexed"
+        aux_files = &aux_files[1];
+        aux_files_empty = &aux_files_empty[1];
+        aux_files_locked = &aux_files_locked[1];
+
+        for (i = 0; i < aux_files_count; i++) {
+            if (aux_files[i] != NULL) {
+                fclose(aux_files[i]);
+                sprintf(aux_file_name, "aux_file_%d.txt", i + 1);
+                remove(aux_file_name);
+            }
+        }
+        free(aux_files);
+        free(aux_files_empty);
+        free(aux_files_locked);
     }
 
-    printf("heap: %d\n", heap_size);
-    for(i = 0; i < heap_size; i++) {
-        printf("%d - %s\n", heap[i], buffer[heap[i]]);
-    }
-
-    fclose(ptr_input_file);
-    fclose(ptr_output_file);
-    mathias_free(heap);
-    for(i = 0; i < (m + 1); i++) {
+    buffer = &buffer[1]; // Gambiarra pro vetor voltar a ser "0-indexed"
+    for (i = 0; i < memory_max_lines; i++) {
         mathias_free(buffer[i]);
     }
-    mathias_free(buffer);
+    free(buffer);
+    free(heap);
+    free(aux_line);
+    free(aux_file_name);
+    fclose(ptr_input_file);
+    fclose(ptr_output_file);
 }
