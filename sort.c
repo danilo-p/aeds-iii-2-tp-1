@@ -284,23 +284,25 @@ void external_sort(const char* input_file, const char* output_file, unsigned int
 
     // ============= Intercalação dos blocos do arquivo de saída =============
 
-    char *aux_file_name = NULL; // Guarda nomes dos arquivos auxiliares
-    aux_file_name = (char *) malloc(20 * sizeof(char));
-
-    unsigned int aux_files_count;
-    FILE *ptr_aux_file;
-    int aux_file_max_block_count;
+    int aux_files_count; // Quantidade de arquivos auxiliares
+    int aux_file_max_block_count = (block_count / memory_max_lines) + 1;
     int aux_file_curr_block_count;
-    FILE **aux_files;
-    int *aux_files_locked;
     int aux_files_empty_count;
+    int *aux_files_locked;
+    // Quantidade máxima de arquivos auxiliares
+    int max_aux_files_count = (block_count / aux_file_max_block_count) + 1;
+    FILE *ptr_aux_file; // Ponteiro do arquivo auxiliar atual
+
+    // Ponteiros para os arquivos auxiliares
+    FILE **aux_files = (FILE **) calloc(max_aux_files_count,  sizeof(FILE *));
+    aux_files = &aux_files[-1]; // Transforma o vetor para "1-indexed"
+
+    // Vetor que trava os arquivos cujos blocos que eram lidos terminaram
+    aux_files_locked = (int *) calloc(max_aux_files_count, sizeof(int));
+    aux_files_locked = &aux_files_locked[-1]; // Transforma para "1-indexed"
 
     // Enquanto estiver mais de 1 bloco no arquivo de saída
     while (block_count > 1) {
-        aux_files_count = 1; // Quantidade de arquivos auxiliares
-        ptr_aux_file = NULL; // Ponteiro do arquivo auxiliar atual
-
-
         // Divisão dos blocos do arquivo de saída em arquivos auxiliares
 
         // Quantidade máxima de blocos nos arquivos auxiliares.
@@ -314,8 +316,9 @@ void external_sort(const char* input_file, const char* output_file, unsigned int
         fgets(aux_line, line_size + 1, ptr_output_file);
 
         // Abre o primeiro arquivo auxiliar
-        sprintf(aux_file_name, "aux_file_%d.txt", aux_files_count);
-        ptr_aux_file = fopen(aux_file_name, "w");
+        aux_files_count = 1;
+        aux_files[aux_files_count] = tmpfile();
+        ptr_aux_file = aux_files[aux_files_count];
 
         // Lê linhas do arquivo de saída enquanto não chegar ao fim
         while (
@@ -327,11 +330,12 @@ void external_sort(const char* input_file, const char* output_file, unsigned int
                 // Caso o arquivo auxiliar esteja com a quantidade de blocos
                 // máxima
                 if (aux_file_curr_block_count == aux_file_max_block_count) {
+                    // Volta o arquivo auxiliar para o início
+                    rewind(ptr_aux_file);
                     // Abre outro arquivo auxiliar
-                    fclose(ptr_aux_file);
                     aux_files_count++;
-                    sprintf(aux_file_name, "aux_file_%d.txt", aux_files_count);
-                    ptr_aux_file = fopen(aux_file_name, "w");
+                    aux_files[aux_files_count] = tmpfile();
+                    ptr_aux_file = aux_files[aux_files_count];
                     // Reinicia a contagem de blocos
                     aux_file_curr_block_count = 1;
                 }
@@ -349,8 +353,8 @@ void external_sort(const char* input_file, const char* output_file, unsigned int
                 fprintf(ptr_aux_file, "%s\n", aux_line);
             }
         }
-        fclose(ptr_aux_file); // Fecha o último arquivo auxiliar aberto
-
+        // Volta o arquivo auxiliar para o início
+        rewind(ptr_aux_file);
 
         // Intercalação dos blocos dos arquivos auxiliares no arquivo de saída
 
@@ -360,20 +364,6 @@ void external_sort(const char* input_file, const char* output_file, unsigned int
         fprintf(ptr_output_file, "%d", line_size);
         block_count = 0;
 
-        // Ponteiros para os arquivos auxiliares
-        aux_files = (FILE **) malloc(sizeof(FILE *) * aux_files_count);
-        aux_files = &aux_files[-1]; // Transforma o vetor para "1-indexed"
-
-        // Vetor que trava os arquivos cujos blocos que eram lidos terminaram
-        aux_files_locked = (int *) malloc(sizeof(int) * aux_files_count);
-        aux_files_locked = &aux_files_locked[-1]; // Transforma para "1-indexed"
-
-
-        for (i = 1; i <= aux_files_count; i++) {
-            aux_files[i] = NULL;
-            aux_files_locked[i] = 0;
-        }
-
         aux_files_empty_count = 0; // Quantidade de arquivos já totalmente lidos
 
         // Enquanto houver arquivos auxiliares com linhas para serem lidas
@@ -381,13 +371,6 @@ void external_sort(const char* input_file, const char* output_file, unsigned int
             // Construção inicial do heap
             heap_size = 0; // Limpa o heap
             for (i = 1; i <= aux_files_count; i++) {
-                // Caso o arquivo auxiliar não estiver aberto
-                if (aux_files[i] == NULL) {
-                    // Abre o arquivo auxiliar e coloca no vetor
-                    sprintf(aux_file_name, "aux_file_%d.txt", i);
-                    aux_files[i] = fopen(aux_file_name, "r");
-                }
-
                 // Caso haja linhas no arquivo auxiliar
                 if (
                     fscanf(aux_files[i], "%[^\n]%*c", aux_line) != EOF &&
@@ -471,29 +454,26 @@ void external_sort(const char* input_file, const char* output_file, unsigned int
             }
         }
 
-        // Transforma de volta para "0-indexed"
-        aux_files = &aux_files[1];
-        aux_files_locked = &aux_files_locked[1];
-
-        for (i = 0; i < aux_files_count; i++) {
+        for (i = 1; i <= aux_files_count; i++) {
+            aux_files_locked[i] = 0;
             if (aux_files[i] != NULL) {
                 fclose(aux_files[i]);
-                sprintf(aux_file_name, "aux_file_%d.txt", i + 1);
-                remove(aux_file_name);
+                aux_files[i] = NULL;
             }
         }
-        free(aux_files);
-        free(aux_files_locked);
     }
 
-    buffer = &buffer[1]; // Gambiarra pro vetor voltar a ser "0-indexed"
+    aux_files = &aux_files[1]; // Transforma de volta para "0-indexed"
+    aux_files_locked = &aux_files_locked[1]; // Transforma o vetor de volta para "0-indexed"
+    free(aux_files);
+    free(aux_files_locked);
+    buffer = &buffer[1]; // Transforma o vetor de volta para "0-indexed"
     for (i = 0; i < memory_max_lines; i++) {
         mathias_free(buffer[i]);
     }
     free(buffer);
     free(heap);
     free(aux_line);
-    free(aux_file_name);
     fclose(ptr_input_file);
     fclose(ptr_output_file);
 }
