@@ -64,14 +64,14 @@ void demote_heap_node(
     int temp;
     int son_index = 2 * node_index + 1; // node's left son
     while (
-        // son is not a leaf
+        // son is not out of bounds
         son_index < heap_size
     ) {
         // node has two sons
-        if (son_index < heap_size - 1) {
-            if (
+        if (
+            son_index < heap_size - 1 && (
                 (
-                    // "son" and the other "son" aren't of the same block
+                    // "son" and the other "son" are of the same block
                     is_equal_type(heap[son_index], heap[son_index + 1]) &&
                     // The other "son" is lower than this one
                     a_menor_que_b(
@@ -79,29 +79,31 @@ void demote_heap_node(
                         buffer[abs(heap[son_index])],
                         line_size
                     )
-                ) ||
-                (
-                    // "son" and the other "son" aren't of the same block
+                ) || (
+                    // "son" and the other "son" aren't of the same type
                     !is_equal_type(heap[son_index], heap[son_index + 1]) &&
                     // the other son is from current type
                     is_equal_type(curr_type, heap[son_index + 1])
                 )
-            ) {
-                // Pick the right son
-                son_index = son_index + 1;
-            }
+            )
+        ) {
+            // Pick the right son
+            son_index = son_index + 1;
         }
 
         if (
             // node and son are of the same block
             (
-                is_equal_type(heap[node_index], heap[son_index])
-            ) &&
-            // The node is lower than the son
-            a_menor_que_b(
-                buffer[abs(heap[node_index])],
-                buffer[abs(heap[son_index])],
-                line_size
+                is_equal_type(heap[node_index], heap[son_index]) &&
+                // The node is lower than the son
+                a_menor_que_b(
+                    buffer[abs(heap[node_index])],
+                    buffer[abs(heap[son_index])],
+                    line_size
+                )
+            ) || (
+                !is_equal_type(heap[node_index], heap[son_index]) &&
+                is_equal_type(curr_type, heap[node_index])
             )
         ) {
             // node is on the right place
@@ -187,7 +189,6 @@ void external_sort(const char* input_file, const char* output_file, unsigned int
 
     fscanf(ptr_input_file, "%u%*c", &line_size);
     memory_max_lines = (memory * 1024) / ((line_size + 1) * sizeof(char));
-    printf("memory_max_lines %d\n", memory_max_lines);;
 
     // Criação estruturas
 
@@ -198,7 +199,6 @@ void external_sort(const char* input_file, const char* output_file, unsigned int
     buffer = &buffer[-1]; // Transforma o vetor para "1-indexed"
     heap = (int *) calloc(memory_max_lines, sizeof(int));
     aux_line = (char *) malloc((line_size + 1) * sizeof(char));
-
 
 
     // =========== Divisão do arquivo de entrada em blocos ordenados ===========
