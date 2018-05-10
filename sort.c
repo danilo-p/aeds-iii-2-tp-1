@@ -292,9 +292,8 @@ void external_sort(const char* input_file, const char* output_file, unsigned int
     int aux_file_max_block_count;
     int aux_file_curr_block_count;
     FILE **aux_files;
-    int *aux_files_empty;
-    int aux_files_empty_count;
     int *aux_files_locked;
+    int aux_files_empty_count;
 
     // Enquanto estiver mais de 1 bloco no arquivo de saída
     while (block_count > 1) {
@@ -369,25 +368,19 @@ void external_sort(const char* input_file, const char* output_file, unsigned int
         aux_files_locked = (int *) malloc(sizeof(int) * aux_files_count);
         aux_files_locked = &aux_files_locked[-1]; // Transforma para "1-indexed"
 
-        // Vetor que marca os arquivos já vazios
-        aux_files_empty = (int *) malloc(sizeof(int) * aux_files_count);
-        aux_files_empty = &aux_files_empty[-1]; // Transforma para "1-indexed"
-        aux_files_empty_count = 0; // Quantidade de arquivos já totalmente lidos
 
         for (i = 1; i <= aux_files_count; i++) {
             aux_files[i] = NULL;
             aux_files_locked[i] = 0;
-            aux_files_empty[i] = 0;
         }
+
+        aux_files_empty_count = 0; // Quantidade de arquivos já totalmente lidos
 
         // Enquanto houver arquivos auxiliares com linhas para serem lidas
         while(aux_files_empty_count < aux_files_count) {
             // Construção inicial do heap
             heap_size = 0; // Limpa o heap
             for (i = 1; i <= aux_files_count; i++) {
-                // Destrava o arquivo para iniciar a leitura de um novo bloco
-                aux_files_locked[i] = 0;
-
                 // Caso o arquivo auxiliar não estiver aberto
                 if (aux_files[i] == NULL) {
                     // Abre o arquivo auxiliar e coloca no vetor
@@ -397,10 +390,12 @@ void external_sort(const char* input_file, const char* output_file, unsigned int
 
                 // Caso haja linhas no arquivo auxiliar
                 if (
-                    !aux_files_empty[i] &&
                     fscanf(aux_files[i], "%[^\n]%*c", aux_line) != EOF &&
                     !feof(aux_files[i])
                 ) {
+                    // Destrava o arquivo para continuar a leitura do bloco
+                    aux_files_locked[i] = 0;
+
                     // Adiciona a linha no buffer
                     strcpy(buffer[i], aux_line);
 
@@ -412,12 +407,12 @@ void external_sort(const char* input_file, const char* output_file, unsigned int
                     promote_heap_node(heap, heap_size, heap_size - 1,
                         buffer, line_size, 1);
                 }
-                // Caso não haja linhas no arquivo auxiliar
-                else {
+                // Caso não haja linhas no arquivo auxiliar e ele não está
+                // travado
+                else if (aux_files_locked[i] == 0) {
                     // Trava o arquivo
                     aux_files_locked[i] = 1;
-                    // Marca o arquivo como vazio
-                    aux_files_empty[i] = 1;
+                    // Incrementa o contador de arquivos vazios
                     aux_files_empty_count++;
                 }
             }
@@ -478,7 +473,6 @@ void external_sort(const char* input_file, const char* output_file, unsigned int
 
         // Transforma de volta para "0-indexed"
         aux_files = &aux_files[1];
-        aux_files_empty = &aux_files_empty[1];
         aux_files_locked = &aux_files_locked[1];
 
         for (i = 0; i < aux_files_count; i++) {
@@ -489,7 +483,6 @@ void external_sort(const char* input_file, const char* output_file, unsigned int
             }
         }
         free(aux_files);
-        free(aux_files_empty);
         free(aux_files_locked);
     }
 
