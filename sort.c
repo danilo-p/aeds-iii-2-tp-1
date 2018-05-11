@@ -64,7 +64,7 @@ int is_equal_type(int a, int b) {
 //     - heap: vetor que armazena índices do buffer;
 //     - buffer: contém linhas lidas da memória externa;
 //     - line_size: tamanho das linhas contidas no buffer;
-//     - curr_type: tipo que deve ser utilizado para comparações;
+//     - curr_block_type: tipo do bloco que estão sendo inseridas novas linhas;
 // Essa função deve retornar 1, se `a` é menor `b` levando em consideração um
 // tipo e os valores presentes no buffer. Caso os tipos sejam diferentes, o
 // elemento que é do tipo especificado é considerado o menor.
@@ -74,22 +74,22 @@ int a_is_lower_than_b_on_heap(
     int *heap,
     char **buffer,
     int line_size,
-    int curr_type
+    int curr_block_type
 ) {
     return (
-        // a and b are of the current block
+        // a e b são do mesmo bloco
         is_equal_type(heap[a_index], heap[b_index]) &&
-        // a is lower than b
+        // a é menor que b
         a_menor_que_b(
             buffer[abs(heap[a_index])],
             buffer[abs(heap[b_index])],
             line_size
         )
     ) || (
-        // b is from another block
+        // a e b não são do mesmo bloco
         !is_equal_type(heap[a_index], heap[b_index]) &&
-        // a is from the current block
-        is_equal_type(curr_type, heap[a_index])
+        // a é do bloco atual
+        is_equal_type(curr_block_type, heap[a_index])
     );
 }
 
@@ -99,16 +99,17 @@ int a_is_lower_than_b_on_heap(
 //     - node_index: índice da célula que deve ser rebaixada;
 //     - buffer: contém linhas lidas da memória externa;
 //     - line_size: tamanho das linhas contidas no buffer;
-//     - curr_type: tipo que deve ser utilizado para comparações;
+//     - curr_block_type: tipo do bloco que estão sendo inseridas novas linhas;
 // Essa função rebaixa no heap a célula representada pelo índice fornecido de
-// acordo com o critério do heap. No caso, o heap é um min-heap.
+// acordo com o critério do heap e com o tipo do bloco. No caso, o heap é um
+// min-heap.
 void demote_heap_node(
     int *heap,
     int heap_size,
     int node_index,
     char **buffer,
     int line_size,
-    int curr_type
+    int curr_block_type
 ) {
     int temp;
     int son_index = 2 * node_index + 1; // node's left son
@@ -118,7 +119,7 @@ void demote_heap_node(
             son_index < heap_size - 1 &&
             a_is_lower_than_b_on_heap(
                 son_index + 1, son_index,
-                heap, buffer, line_size, curr_type
+                heap, buffer, line_size, curr_block_type
             )
         ) {
             // Pick the other son
@@ -127,7 +128,7 @@ void demote_heap_node(
 
         if (a_is_lower_than_b_on_heap(
             node_index, son_index,
-            heap, buffer, line_size, curr_type
+            heap, buffer, line_size, curr_block_type
         )) {
             // node is on the right place
             break;
@@ -150,16 +151,17 @@ void demote_heap_node(
 //     - node_index: índice da célula que deve ser promovida;
 //     - buffer: contém linhas lidas da memória externa;
 //     - line_size: tamanho das linhas contidas no buffer;
-//     - curr_type: tipo que deve ser utilizado para comparações;
+//     - curr_block_type: tipo do bloco que estão sendo inseridas novas linhas;
 // Essa função promove no heap a célula representada pelo índice fornecido de
-// acordo com o critério do heap. No caso, o heap é um min-heap.
+// acordo com o critério do heap e com o tipo do bloco. No caso, o heap é um
+// min-heap.
 void promote_heap_node(
     int *heap,
     int heap_size,
     int node_index,
     char **buffer,
     int line_size,
-    int curr_type
+    int curr_block_type
 ) {
     int temp;
     int father_index = (node_index - 1) / 2;
@@ -168,7 +170,7 @@ void promote_heap_node(
         node_index > 0 &&
         a_is_lower_than_b_on_heap(
             node_index, father_index,
-            heap, buffer, line_size, curr_type
+            heap, buffer, line_size, curr_block_type
         )
     ) {
         // Swap node and father
@@ -202,7 +204,7 @@ int create_initial_blocks(
     char **buffer,
     char *aux_line
 ) {
-    int curr_type = 1; // Tipo do bloco que está sendo construído. (1 | -1)
+    int curr_block_type = 1; // Tipo do bloco que está sendo gerado. (1 | -1)
     int heap_size = 0; // Tamanho atual do heap
     int block_count = 1; // Quantidade de blocos no arquivo de saída
     int index = 0; // Guarda o índices de linhas no buffer
@@ -230,7 +232,7 @@ int create_initial_blocks(
 
         // Promove a linha lida no heap
         promote_heap_node(heap, heap_size, heap_size - 1,
-            buffer, line_size, curr_type);
+            buffer, line_size, curr_block_type);
     }
 
 
@@ -239,8 +241,8 @@ int create_initial_blocks(
         index = heap[0]; // Recupera linha que está no topo do heap
 
         // Começa um novo bloco caso o tipo da linha seja diferente
-        if (!is_equal_type(index, curr_type)) {
-            curr_type = curr_type * (-1);
+        if (!is_equal_type(index, curr_block_type)) {
+            curr_block_type = curr_block_type * (-1);
             fprintf(ptr_output_file, "\n"); // Separa os blocos
             block_count++;
         }
@@ -262,10 +264,10 @@ int create_initial_blocks(
                 line_size
             )) {
                 // Marca com o tipo do próximo bloco
-                heap[0] = index * curr_type * (-1);
+                heap[0] = index * curr_block_type * (-1);
             } else {
                 // Marca com o tipo do bloco atual
-                heap[0] = index * curr_type;
+                heap[0] = index * curr_block_type;
             }
         }
         // Se não houver mais linhas
@@ -276,7 +278,8 @@ int create_initial_blocks(
         }
 
         // Rebaixa o topo do heap
-        demote_heap_node(heap, heap_size, 0, buffer, line_size, curr_type);
+        demote_heap_node(heap, heap_size, 0, buffer, line_size,
+            curr_block_type);
     }
 
     return block_count;
@@ -586,7 +589,7 @@ void external_sort(
     char *aux_line = (char *) mathias_malloc((line_size + 1) * sizeof(char));
 
     // Ponteiros para os arquivos auxiliares utilizados
-    FILE **aux_files = (FILE **) mathias_calloc(memory_max_lines,  sizeof(FILE *));
+    FILE **aux_files = (FILE **) mathias_calloc(memory_max_lines, sizeof(FILE *));
     aux_files = &aux_files[-1]; // Transforma o vetor para "1-indexed"
 
     // Vetor que indica que um arquivo auxiliar ou está vazio ou está esperando
@@ -599,9 +602,9 @@ void external_sort(
         memory_max_lines, line_size, heap, buffer, aux_line);
 
     // Intercalação dos blocos do arquivo de saída
-    merge_output_file_blocks(ptr_input_file, ptr_output_file, output_file, aux_files,
-        aux_files_locked, block_count, memory_max_lines, line_size, heap,
-        buffer, aux_line);
+    merge_output_file_blocks(ptr_input_file, ptr_output_file, output_file,
+        aux_files, aux_files_locked, block_count, memory_max_lines, line_size,
+        heap, buffer, aux_line);
 
 
     // Libera memória alocada
