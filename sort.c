@@ -96,13 +96,19 @@ int a_is_lower_than_b_on_heap(
 // Parâmetros:
 //     - heap: vetor que armazena índices do buffer;
 //     - heap_size: tamanho do vetor heap;
-//     - node_index: índice da célula que deve ser rebaixada;
+//     - node_index: índice do nó que deve ser rebaixado;
 //     - buffer: contém linhas lidas da memória externa;
 //     - line_size: tamanho das linhas contidas no buffer;
 //     - curr_block_type: tipo do bloco que estão sendo inseridas novas linhas;
-// Essa função rebaixa no heap a célula representada pelo índice fornecido de
+// Essa função rebaixa no heap o nó representado pelo índice fornecido de
 // acordo com o critério do heap e com o tipo do bloco. No caso, o heap é um
 // min-heap.
+// A operação de rebaixamento de um nó no heap tem o pior caso como o nó que
+// sendo a raíz, e seu lugar correto é ser uma das folhas do heap (maior
+// elemento do heap). Assim, o loop principal é executado log(M) vezes, sendo M
+// o tamanho máximo do heap dado pela quantidade de linhas que cabem na memória
+// e log(M) sendo a  altura da árvore. Logo, a complexidade desta função é
+// O(log(M)).
 void demote_heap_node(
     int *heap,
     int heap_size,
@@ -112,17 +118,21 @@ void demote_heap_node(
     int curr_block_type
 ) {
     int temp;
-    int son_index = 2 * node_index + 1; // node's left son
-    while (son_index < heap_size) {
+    int son_index = 2 * node_index + 1;
+    while (
+        // Nó não é uma folha
+        son_index < heap_size
+    ) {
+        // Pega o menor nó filho
         if (
-            // node has two sons
+            // O nó pai tem 2 nós filhos
             son_index < heap_size - 1 &&
+            // O outro nó filho é menor
             a_is_lower_than_b_on_heap(
                 son_index + 1, son_index,
                 heap, buffer, line_size, curr_block_type
             )
         ) {
-            // Pick the other son
             son_index = son_index + 1;
         }
 
@@ -130,17 +140,17 @@ void demote_heap_node(
             node_index, son_index,
             heap, buffer, line_size, curr_block_type
         )) {
-            // node is on the right place
+            // Nó está no lugar certo
             break;
         }
 
-        // Swap node and son
+        // Troca nó pai com nó filho
         temp = heap[node_index];
         heap[node_index] = heap[son_index];
         heap[son_index] = temp;
 
-        // Jump to the next heap level
-        node_index = son_index; // node becomes son
+        // Novo nó filho é recuperado
+        node_index = son_index;
         son_index = 2 * node_index + 1;
     }
 }
@@ -148,13 +158,18 @@ void demote_heap_node(
 // Parâmetros:
 //     - heap: vetor que armazena índices do buffer;
 //     - heap_size: tamanho do vetor heap;
-//     - node_index: índice da célula que deve ser promovida;
+//     - node_index: índice do nó que deve ser promovido;
 //     - buffer: contém linhas lidas da memória externa;
 //     - line_size: tamanho das linhas contidas no buffer;
 //     - curr_block_type: tipo do bloco que estão sendo inseridas novas linhas;
-// Essa função promove no heap a célula representada pelo índice fornecido de
+// Essa função promove no heap o nó representado pelo índice fornecido de
 // acordo com o critério do heap e com o tipo do bloco. No caso, o heap é um
 // min-heap.
+// A operação de promoção de um nó no heap tem o pior caso como o nó que sendo
+// uma folha, e seu lugar correto é ser a raíz do heap (menor elemento do heap).
+// Assim, o loop principal é executado log(M) vezes, sendo M o tamanho máximo do
+// heap dado pela quantidade de linhas que cabem na memória e log(M) sendo a
+// altura da árvore. Logo, a complexidade desta função é O(log(M)).
 void promote_heap_node(
     int *heap,
     int heap_size,
@@ -164,23 +179,24 @@ void promote_heap_node(
     int curr_block_type
 ) {
     int temp;
-    int father_index = (node_index - 1) / 2;
+    int parent_index = (node_index - 1) / 2;
     while (
-        // node is not the heap root
+        // Nó não é a raiz do heap
         node_index > 0 &&
+        // Nó não está no lugar certo
         a_is_lower_than_b_on_heap(
-            node_index, father_index,
+            node_index, parent_index,
             heap, buffer, line_size, curr_block_type
         )
     ) {
-        // Swap node and father
+        // Troca nó pai com nó filho
         temp = heap[node_index];
-        heap[node_index] = heap[father_index];
-        heap[father_index] = temp;
+        heap[node_index] = heap[parent_index];
+        heap[parent_index] = temp;
 
-        // Jump to the previous heap level
-        node_index = father_index; // node becomes father
-        father_index = (node_index - 1) / 2;
+        // Novo nó pai é recuperado
+        node_index = parent_index;
+        parent_index = (node_index - 1) / 2;
     }
 }
 
@@ -195,6 +211,10 @@ void promote_heap_node(
 // Essa função processa o arquivo de entrada dividindo-o em blocos ordenados que
 // são registrados no arquivo de saída. Estes são os primeiros blocos que dão
 // início ao processo de ordenação do arquivo.
+// A função lê todas as N linhas do arquivo de entrada, fazendo operações de
+// inserção no Heap com complexidade O(log(M)) no heap, sendo M o tamanho do
+// heap (no máximo memory_max_lines). Logo, a complexidade final desta função é
+// O(N*log(M)).
 int create_initial_blocks(
     FILE *ptr_input_file,
     FILE *ptr_output_file,
@@ -295,6 +315,10 @@ int create_initial_blocks(
 // Essa função distribui os blocos do arquivo de saída entre os arquivos
 // auxiliares disponíveis. Ela não ultrapassa o limite de arquivos auxiliares
 // definindo um número máximo de blocos em cada arquivo auxiliar.
+// Para distrubuir entre os arquivos auxiliares, esta função passa por todas
+// as N linhas que estavam presentes no arquivo de saída. Para cada linha, a
+// função realiza operações constantes para copiá-la para o arquivo auxiliar.
+// Assim, a complexidade da função é da ordem de O(N).
 int spread_blocks_into_aux_files(
     FILE *ptr_output_file,
     FILE **aux_files,
@@ -364,7 +388,11 @@ int spread_blocks_into_aux_files(
 //     - block_count: quantidade de blocos no arquivo de saída;
 //     - heap: vetor que armazena índices do buffer;
 // Essa função intercala os blocos que estão armazenados nos arquivos auxiliares
-// registrando os novos blocos no arquivo de saída.
+// registrando os novos blocos no arquivo de saída. Em todos os arquivos
+// auxiliares estão contidas as N linhas do arquivo de entrada inicial. Cada
+// linha é lida e inserida no Heap com uma complexidade de O(log(M)), sendo
+// M o tamanho máximo do heap. Assim, o custo assintótico desta função é da
+// ordem de O(N*log(M))
 int merge_aux_files_blocks(
     FILE *ptr_output_file,
     const char *output_file,
@@ -499,6 +527,10 @@ int merge_aux_files_blocks(
 // Essa função intercala os blocos que estão armazenados no arquivo de saída
 // após a primeira passada sobre o arquivo de entrada. Ela faz a intercalação
 // até que reste somente 1 bloco.
+// Os blocos gerados através do Heap são em média 2 vezes maiores que o próprio
+// tamanho do Heap. Assim, a quantidade de blocos B diminui em média 2 vezes
+// após uma iteração do loop principal, levando à um total de log(B) iterações.
+// Logo, a complexidade desta função é O(log(B)*(N*log(M)))
 void merge_output_file_blocks(
     FILE *ptr_input_file,
     FILE *ptr_output_file,
@@ -516,10 +548,12 @@ void merge_output_file_blocks(
     // Enquanto estiver mais de 1 bloco no arquivo de saída
     while (block_count > 1) {
         // Distribui os blocos em arquivos auxiliares
+        // O(N)
         aux_files_count =  spread_blocks_into_aux_files(ptr_output_file,
             aux_files, aux_line, line_size, block_count, memory_max_lines);
 
         // Intercala os blocos dos arquivos auxiliares no arquivo de saída
+        // O(N*log(M))
         block_count = merge_aux_files_blocks(ptr_output_file, output_file,
             aux_files, aux_files_locked, aux_files_count, buffer, aux_line,
             line_size, heap);
@@ -545,6 +579,12 @@ void * mathias_calloc(int num, int size) {
 // Essa função deverá ler todos registros do arquivo `input_file`, ordená-los e
 // escrevê-los em `output_file`, usando memória menor ou igual a `memory`. Lembre-se
 // de fechar todos os arquivos que você usar por aqui!!
+// A complexidade final de tempo para se ordenar o arquivo de entrada se dá por
+// O((log(B))*(N*log(M))), sendo N o tamanho do arquivo de entrada e M a
+// quantidade máxima de linhas que podem armazenadas em memória principal e B
+// a quantidade de blocos gerados na primeira passada.
+// O número de passadas necessário para ordenar o arquivo de entrada se dá por
+// log_F(teto(N/2M)), sendo F no máximo M.
 void external_sort(
     const char* input_file,
     const char* output_file,
@@ -597,11 +637,13 @@ void external_sort(
     int *aux_files_locked = (int *) mathias_calloc(memory_max_lines, sizeof(int));
     aux_files_locked = &aux_files_locked[-1]; // Transforma para "1-indexed"
 
-    // Divisão do arquivo de entrada em blocos ordenados
+
+    // Divisão do arquivo de entrada em blocos ordenados (O(N*log(M)))
     int block_count = create_initial_blocks(ptr_input_file, ptr_output_file,
         memory_max_lines, line_size, heap, buffer, aux_line);
 
-    // Intercalação dos blocos do arquivo de saída
+
+    // Intercalação dos blocos do arquivo de saída (O(log(B)*(N*log(M))))
     merge_output_file_blocks(ptr_input_file, ptr_output_file, output_file,
         aux_files, aux_files_locked, block_count, memory_max_lines, line_size,
         heap, buffer, aux_line);
