@@ -392,7 +392,7 @@ int spread_blocks_into_aux_files(
 // auxiliares estão contidas as N linhas do arquivo de entrada inicial. Cada
 // linha é lida e inserida no Heap com uma complexidade de O(log(M)), sendo
 // M o tamanho máximo do heap. Assim, o custo assintótico desta função é da
-// ordem de O(N*log(M))
+// ordem de O(N*log(M)).
 int merge_aux_files_blocks(
     FILE *ptr_output_file,
     const char *output_file,
@@ -529,8 +529,8 @@ int merge_aux_files_blocks(
 // até que reste somente 1 bloco.
 // Os blocos gerados através do Heap são em média 2 vezes maiores que o próprio
 // tamanho do Heap. Assim, a quantidade de blocos B diminui em média 2 vezes
-// após uma iteração do loop principal, levando à um total de log(B) iterações.
-// Logo, a complexidade desta função é O(log(B)*(N*log(M)))
+// após uma iteração do loop principal, levando à um total de log_M(B)
+// iterações. Logo, a complexidade desta função é O(log_M(B)*N*log(M)).
 void merge_output_file_blocks(
     FILE *ptr_input_file,
     FILE *ptr_output_file,
@@ -580,7 +580,7 @@ void * mathias_calloc(int num, int size) {
 // escrevê-los em `output_file`, usando memória menor ou igual a `memory`. Lembre-se
 // de fechar todos os arquivos que você usar por aqui!!
 // A complexidade final de tempo para se ordenar o arquivo de entrada se dá por
-// O((log(B))*(N*log(M))), sendo N o tamanho do arquivo de entrada e M a
+// O(log_M(B)*N*log(M)), sendo N o tamanho do arquivo de entrada e M a
 // quantidade máxima de linhas que podem armazenadas em memória principal e B
 // a quantidade de blocos gerados na primeira passada.
 // O número de passadas necessário para ordenar o arquivo de entrada se dá por
@@ -643,7 +643,7 @@ void external_sort(
         memory_max_lines, line_size, heap, buffer, aux_line);
 
 
-    // Intercalação dos blocos do arquivo de saída (O(log(B)*(N*log(M))))
+    // Intercalação dos blocos do arquivo de saída (O(log_M(B)*N*log(M)))
     merge_output_file_blocks(ptr_input_file, ptr_output_file, output_file,
         aux_files, aux_files_locked, block_count, memory_max_lines, line_size,
         heap, buffer, aux_line);
